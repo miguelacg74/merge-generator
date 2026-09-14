@@ -9,6 +9,8 @@ Probado en Oracle SQL Developer 24.3.1.347.1826.
 
 - Lee el SQL **seleccionado** en la hoja de trabajo (o todo el contenido si no hay seleccion).
 - Parsea `INSERT INTO tabla (cols) VALUES (...)` y `UPDATE tabla SET ... WHERE ...`.
+- Alternativa: **clic derecho sobre una tabla** en el navegador de conexiones lee sus
+  datos (`SELECT *`) y genera el MERGE directamente, sin escribir INSERTs a mano.
 - Consulta la **clave primaria real** en la base de datos usando la conexion de la hoja
   (`ALL_CONSTRAINTS` / `ALL_CONS_COLUMNS`); si no hay conexion o la tabla no tiene PK,
   la escribes a mano en el dialogo.
@@ -23,6 +25,18 @@ Probado en Oracle SQL Developer 24.3.1.347.1826.
 3. Revisa la clave primaria de cada tabla en la tabla superior (columna editable,
    varias columnas separadas por comas), ajusta las opciones y pulsa *Generar*.
 4. *Abrir en hoja nueva* o *Copiar*.
+
+### Desde una tabla del navegador
+
+1. En el panel **Conexiones**, expande tu conexion hasta *Tables* y haz
+   **clic derecho** sobre la tabla -> *Generar MERGE desde tabla...*.
+2. Indica el maximo de filas a leer (por defecto 10000).
+3. El dialogo se abre con los datos de la tabla ya cargados; revisa la clave y
+   genera como siempre.
+
+Los valores se emiten como literales segun su tipo (`TO_DATE`, `TO_TIMESTAMP`,
+`HEXTORAW`, `N'...'`). Columnas `BLOB` y tipos sin literal quedan a `NULL` con
+un aviso en la salida.
 
 ## Compilar e instalar (Windows)
 
@@ -62,14 +76,16 @@ Comprueba el parser y el generador con un script de ejemplo (requiere haber comp
 
 ```
 src/com/ejemplo/mergegen/
-  DmlStatement.java        modelo de una sentencia INSERT/UPDATE
-  DmlParser.java           troceado del script y parseo (sin librerias externas)
-  MergeConfig.java         claves por tabla y opciones
-  MergeGenerator.java      generacion del MERGE + avisos
-  PrimaryKeyResolver.java  PK desde la conexion activa (JDBC)
-  MergeDialog.java         dialogo Swing (claves, opciones, resultado)
-  MergeOutput.java         salida: hoja nueva o portapapeles
-  MergeGenController.java  accion del IDE (menu Tools y menu contextual)
+  DmlStatement.java            modelo de una sentencia INSERT/UPDATE
+  DmlParser.java               troceado del script y parseo (sin librerias externas)
+  MergeConfig.java             claves por tabla y opciones
+  MergeGenerator.java          generacion del MERGE + avisos
+  PrimaryKeyResolver.java      PK desde la conexion activa (JDBC)
+  MergeDialog.java             dialogo Swing (claves, opciones, resultado)
+  MergeOutput.java             salida: hoja nueva o portapapeles
+  MergeGenController.java      accion del IDE (menu Tools y menu contextual del editor)
+  TableMergeGenController.java accion del menu contextual del navegador (tablas)
+  TableDataExtractor.java      SELECT * -> INSERTs con literales por tipo (JDBC)
 META-INF/MANIFEST.MF       bundle OSGi
 META-INF/extension.xml     descriptor de la extension (accion + menus)
 test/SelfTest.java         prueba manual del parser y el generador

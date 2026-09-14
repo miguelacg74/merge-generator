@@ -17,12 +17,33 @@
   </feature>
 
   <trigger-hooks xmlns="http://xmlns.oracle.com/ide/extension">
+
+    <rules>
+      <rule-type id="mergegen-dbnode-has-object-type"
+                 class="oracle.dbtools.raptor.utils.ObjectTypeRuleFunction">
+        <supported-parameters>
+          <param name="ObjectType" required="true"/>
+        </supported-parameters>
+      </rule-type>
+      <rule id="mergegen-has-table" type="mergegen-dbnode-has-object-type">
+        <parameters>
+          <param name="ObjectType" value="TABLE"/>
+        </parameters>
+      </rule>
+    </rules>
+
     <triggers>
 
       <actions xmlns="http://xmlns.oracle.com/jdeveloper/1013/extension">
         <action id="com.generator.mergedml.GENERAR">
           <properties>
             <property name="Name">Generar MERGE desde DML...</property>
+            <property name="Category">Tools</property>
+          </properties>
+        </action>
+        <action id="com.generator.mergedml.GENERAR_TABLA">
+          <properties>
+            <property name="Name">Generar MERGE desde tabla...</property>
             <property name="Category">Tools</property>
           </properties>
         </action>
@@ -33,6 +54,13 @@
           <update-rules>
             <update-rule rule="always-enabled">
               <action id="com.generator.mergedml.GENERAR"/>
+            </update-rule>
+          </update-rules>
+        </controller>
+        <controller class="com.generator.mergedml.TableMergeGenController">
+          <update-rules>
+            <update-rule rule="always-enabled">
+              <action id="com.generator.mergedml.GENERAR_TABLA"/>
             </update-rule>
           </update-rules>
         </controller>
@@ -57,6 +85,16 @@
         <menu>
           <section xmlns="http://jcp.org/jsr/198/extension-manifest" id="mergegen" weight="15.0">
             <item action-ref="com.generator.mergedml.GENERAR" weight="1.0"/>
+          </section>
+        </menu>
+      </context-menu-hook>
+
+      <!-- Menu contextual del navegador de conexiones (clic derecho sobre una tabla) -->
+      <context-menu-hook rule="mergegen-has-table">
+        <site idref="db_nav"/>
+        <menu>
+          <section xmlns="http://jcp.org/jsr/198/extension-manifest" id="mergegen_nav" weight="15.0">
+            <item action-ref="com.generator.mergedml.GENERAR_TABLA" weight="1.0"/>
           </section>
         </menu>
       </context-menu-hook>

@@ -36,6 +36,7 @@ public class MergeDialog extends JDialog {
     private static final long serialVersionUID = 1L;
 
     private final List<DmlStatement> statements;
+    private final List<String> initialWarnings;
     private final MergeConfig config = new MergeConfig();
     private final KeyTableModel keyModel;
     private final JTextArea output = new JTextArea();
@@ -44,8 +45,20 @@ public class MergeDialog extends JDialog {
     private final JCheckBox groupBox = new JCheckBox("Agrupar filas por tabla", true);
 
     public MergeDialog(Frame owner, List<DmlStatement> statements, Connection connection) {
+        this(owner, statements, connection, null);
+    }
+
+    /**
+     * @param initialWarnings avisos previos (p.ej. de la extraccion de datos)
+     *        que se muestran antes de los avisos del generador
+     */
+    public MergeDialog(Frame owner, List<DmlStatement> statements, Connection connection,
+                       List<String> initialWarnings) {
         super(owner, "Generar MERGE desde DML", true);
         this.statements = statements;
+        this.initialWarnings = initialWarnings == null
+                ? new ArrayList<String>()
+                : new ArrayList<String>(initialWarnings);
 
         List<TableKey> keys = new ArrayList<TableKey>();
         for (String table : MergeGenerator.tablesOf(statements)) {
@@ -152,6 +165,9 @@ public class MergeDialog extends JDialog {
         MergeGenerator generator = new MergeGenerator(config);
         String script = generator.generate(statements);
         StringBuilder text = new StringBuilder();
+        for (String warning : initialWarnings) {
+            text.append("-- AVISO: ").append(warning).append('\n');
+        }
         for (String warning : generator.getWarnings()) {
             text.append("-- AVISO: ").append(warning).append('\n');
         }

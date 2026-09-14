@@ -2,7 +2,12 @@ import com.generator.mergedml.DmlParser;
 import com.generator.mergedml.DmlStatement;
 import com.generator.mergedml.MergeConfig;
 import com.generator.mergedml.MergeGenerator;
+import com.generator.mergedml.TableDataExtractor;
 
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -46,6 +51,30 @@ public final class SelfTest {
                 "INSERT INTO T (A, B) VALUES (1, 2);"));
         check(merge2.contains("1 = 0"), "sin PK deberia generar ON (1 = 0 ...)");
         check(!sinPk.getWarnings().isEmpty(), "sin PK deberia avisar");
+
+        // literales del extractor de tablas
+        List<String> w = new ArrayList<String>();
+        check("'O''Brien'".equals(TableDataExtractor.toLiteral(
+                Types.VARCHAR, "O'Brien", "C", w)), "string mal escapado");
+        check("N'n'".equals(TableDataExtractor.toLiteral(
+                Types.NVARCHAR, "n", "C", w)), "literal nacional mal emitido");
+        check("12.30".equals(TableDataExtractor.toLiteral(
+                Types.NUMERIC, new BigDecimal("12.30"), "C", w)), "numero mal emitido");
+        check(TableDataExtractor.toLiteral(Types.DATE,
+                Timestamp.valueOf("2024-01-31 14:30:00"), "C", w)
+                .startsWith("TO_DATE('2024-01-31 14:30:00'"), "fecha mal emitida");
+        check(TableDataExtractor.toLiteral(Types.TIMESTAMP,
+                Timestamp.valueOf("2024-01-31 14:30:00.123"), "C", w)
+                .contains("HH24:MI:SS.FF"), "timestamp sin fraccion");
+        check("NULL".equals(TableDataExtractor.toLiteral(
+                Types.VARCHAR, null, "C", w)), "null mal emitido");
+        check("NULL".equals(TableDataExtractor.toLiteral(
+                Types.BLOB, new byte[]{1}, "C", w)) && !w.isEmpty(),
+                "BLOB deberia ser NULL con aviso");
+        check("\"miCol\"".equals(TableDataExtractor.quoteIfNeeded("miCol")),
+                "identificador case-sensitive sin comillas");
+        check("EMP".equals(TableDataExtractor.quoteIfNeeded("EMP")),
+                "identificador normal no deberia llevar comillas");
 
         System.out.println("OK: todas las comprobaciones pasaron");
     }
