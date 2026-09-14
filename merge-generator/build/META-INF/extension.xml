@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension xmlns="http://jcp.org/jsr/198/extension-manifest"
+           id="com.generator.mergedml"
+           version="1.0.0"
+           esdk-version="1.0">
+
+  <name>Generador de MERGE</name>
+  <owner>Ejemplo</owner>
+
+  <feature id="com.generator.mergedml" xmlns="http://xmlns.oracle.com/ide/extension">
+    <category-id>db-category</category-id>
+    <name>Generador de MERGE</name>
+    <description>Genera sentencias MERGE a partir de scripts INSERT/UPDATE</description>
+    <type>
+      <service can-user-disable="true" reload-if-used="true"/>
+    </type>
+  </feature>
+
+  <trigger-hooks xmlns="http://xmlns.oracle.com/ide/extension">
+    <triggers>
+
+      <actions xmlns="http://xmlns.oracle.com/jdeveloper/1013/extension">
+        <action id="com.generator.mergedml.GENERAR">
+          <properties>
+            <property name="Name">Generar MERGE desde DML...</property>
+            <property name="Category">Tools</property>
+          </properties>
+        </action>
+      </actions>
+
+      <controllers>
+        <controller class="com.generator.mergedml.MergeGenController">
+          <update-rules>
+            <update-rule rule="always-enabled">
+              <action id="com.generator.mergedml.GENERAR"/>
+            </update-rule>
+          </update-rules>
+        </controller>
+      </controllers>
+
+      <menu-hook xmlns="http://jcp.org/jsr/198/extension-manifest">
+        <menus>
+          <menubar id="javax.ide.view.MAIN_WINDOW_MENUBAR_ID">
+            <menu id="Tools">
+              <section id="DATABASE_SECTION" weight="2.0">
+                <item action-ref="com.generator.mergedml.GENERAR" weight="9.1"/>
+              </section>
+            </menu>
+          </menubar>
+
+        </menus>
+      </menu-hook>
+
+      <!-- Menu contextual del editor / hoja de trabajo (clic derecho sobre el SQL) -->
+      <context-menu-hook rule="always-enabled">
+        <site idref="editor"/>
+        <menu>
+          <section xmlns="http://jcp.org/jsr/198/extension-manifest" id="mergegen" weight="15.0">
+            <item action-ref="com.generator.mergedml.GENERAR" weight="1.0"/>
+          </section>
+        </menu>
+      </context-menu-hook>
+
+    </triggers>
+  </trigger-hooks>
+
+</extension>

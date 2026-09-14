@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-SymbolicName: com.generator.mergedml
+Bundle-Version: 1.0.0
+Bundle-ClassPath: .
+Require-Bundle: oracle.ide,oracle.idert,oracle.javatools,oracle.javatools-nodeps,oracle.jewt-core,oracle.uic,oracle.sqldeveloper,oracle.sqldeveloper.worksheet
+Export-Package: META-INF,com.generator.mergedml
