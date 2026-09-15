@@ -13,8 +13,8 @@ Codigo y documentacion en espanol, sin tildes en fuentes/comentarios (ASCII).
 - Prueba sin IDE: `javac -d out -cp build test\SelfTest.java` y
   `java -cp "out;build" SelfTest`. Ojo: `java.exe` es binario Windows; usa rutas
   Windows y `;` como separador (las rutas `/tmp` de Git Bash no resuelven).
-- Los directorios `build/` y `dist/` estan versionados en git (decision del repo);
-  se regeneran con cada `build.bat`.
+- `build/` y `dist/` NO se versionan (estan en `.gitignore`); se regeneran con
+  cada `build.bat`. No re-añadirlos con `git add -f` ni committeandolos a mano.
 
 ## Arquitectura (respetar el pipeline)
 
