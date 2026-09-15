@@ -75,7 +75,7 @@ Comprueba el parser y el generador con un script de ejemplo (requiere haber comp
 ## Estructura
 
 ```
-src/com/ejemplo/mergegen/
+src/com/generator/mergedml/
   DmlStatement.java            modelo de una sentencia INSERT/UPDATE
   DmlParser.java               troceado del script y parseo (sin librerias externas)
   MergeConfig.java             claves por tabla y opciones
