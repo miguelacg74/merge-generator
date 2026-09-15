@@ -1,2 +1,4 @@
 merge-generator/dist/com.generator.mergedml.jar
 merge-generator/build/META-INF/extension.xml
+merge-generator/build/*
+merge-generator/dist/*
