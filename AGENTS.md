@@ -89,6 +89,6 @@ del IDE.
 - Java 11 (`--release 11`), sin librerias de terceros, `StringBuilder` para
   concatenar SQL, listeners anonimos (como los existentes), `try/finally` para
   recursos JDBC. Comentarios de clase/metodo en espanol como el resto.
-- Quirk intencionado: los fuentes viven en `src/com/ejemplo/mergegen/` pero
+- Quirk intencionado: los fuentes viven en `src/com/generator/mergedml/` pero
   declaran `package com.generator.mergedml`. No "arreglar" la carpeta sin
   actualizar el bundle.
