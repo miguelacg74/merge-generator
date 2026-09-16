@@ -41,6 +41,11 @@ Hay DOS puntos de entrada que convergen en el mismo pipeline:
 - `TableMergeGenController`: tabla del navegador -> `TableDataExtractor` -> INSERTs.
   Antes de extraer abre `TableFilterDialog` (columnas via `columnsOf`), que arma
   un `TableFilter` (WHERE + limite opcional) para el `SELECT` del extractor.
+  El `TableFilter` tambien puede llevar una consulta SELECT/WITH personalizada
+  (`useCustomQuery` + `customQuery`): el extractor la ejecuta en vez del
+  `SELECT *` y valida que cada etiqueta del resultado exista como columna del
+  destino (match case-insensitive, resuelto al nombre canonico; las que no
+  existen abortan con error pidiendo `expr AS COLUMNA`).
 
 Regla de oro: cualquier fuente nueva de datos debe producir `DmlStatement` y entrar
 por `MergeDialog`. No generar MERGE por caminos paralelos ni duplicar logica del
@@ -49,11 +54,21 @@ no introducir estado compartido.
 
 ## Sin dependencias externas
 
-`DmlParser`, `MergeGenerator`, `TableDataExtractor` y `SelfTest` son Java puro
-(JDBC + colecciones): deben seguir compilando/ejecutandose SIN los jars de
-SQL Developer. Solo los controllers, `MergeDialog` y `MergeOutput` pueden usar
-APIs del IDE. Mantener esa frontera es lo que permite probar la logica fuera
-del IDE.
+`DmlParser`, `MergeGenerator`, `TableDataExtractor`, `TableFilter`,
+`JsonUtil`, `FilterPreset` y `SelfTest` son Java puro (JDBC + colecciones +
+Swing): deben seguir compilando/ejecutandose SIN los jars de SQL Developer.
+Solo los controllers, `MergeDialog` y `MergeOutput` pueden usar APIs del IDE.
+Mantener esa frontera es lo que permite probar la logica fuera del IDE.
+
+## Presets (JSON hecho a mano)
+
+`TableFilterDialog` guarda/carga el estado de extraccion (condiciones, WHERE
+libre, limite, consulta personalizada) en `*.merge.json` via `FilterPreset` +
+`JsonUtil` (serializador/parser propio: NO hay libreria JSON en el proyecto).
+El nombre sugerido es `<tabla>.merge.json` sanitizado. Las condiciones se
+guardan por nombre de columna y se re-resuelven al cargar contra las columnas
+vivas de la tabla (las que ya no existen se omiten con aviso). Formato con
+campo `version`; el parser debe seguir siendo tolerante a claves desconocidas.
 
 ## APIs internas de SQL Developer (fragiles entre versiones)
 

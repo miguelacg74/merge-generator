@@ -144,16 +144,17 @@ public class TableMergeGenController implements Controller {
             @Override
             protected void done() {
                 progress.dispose();
-                String where = filter.whereClause();
-                String sql = "SELECT * FROM " + qualified
-                        + (where.isEmpty() ? "" : " WHERE " + where);
                 if (error != null) {
-                    showError(error, sql);
+                    showError(error, describeSql(qualified, filter));
                     return;
                 }
                 if (result == null || result.getStatements().isEmpty()) {
                     JOptionPane.showMessageDialog(Ide.getMainWindow(),
-                            "La tabla " + qualified + " no devolvio filas con ese filtro.",
+                            "La tabla " + qualified + " no devolvio filas"
+                                    + (filter.hasCustomQuery()
+                                            ? " con esa consulta." : " con ese filtro.")
+                                    + "\n\nConsulta ejecutada:\n"
+                                    + describeSql(qualified, filter),
                             TITLE, JOptionPane.INFORMATION_MESSAGE);
                     return;
                 }
@@ -179,6 +180,16 @@ public class TableMergeGenController implements Controller {
         progress.pack();
         progress.setLocationRelativeTo(Ide.getMainWindow());
         return progress;
+    }
+
+    /** El SQL que se ejecuto (o se intento) para mostrarlo en los mensajes. */
+    private static String describeSql(String qualified, TableFilter filter) {
+        if (filter.hasCustomQuery()) {
+            return filter.getCustomQuery().trim();
+        }
+        String where = filter.whereClause();
+        return "SELECT * FROM " + qualified
+                + (where.isEmpty() ? "" : " WHERE " + where);
     }
 
     private static void showError(Exception e, String sql) {

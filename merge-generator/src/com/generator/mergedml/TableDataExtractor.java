@@ -10,8 +10,10 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -158,7 +160,11 @@ public final class TableDataExtractor {
 
     /**
      * Ejecuta {@code SELECT * FROM tabla [WHERE filtro]} y devuelve un INSERT
-     * por fila. El limite de filas solo se aplica si el filtro lo tiene
+     * por fila. Si el filtro lleva consulta personalizada
+     * ({@link TableFilter#hasCustomQuery()}) ejecuta ese SQL en su lugar y
+     * valida que cada columna del resultado exista en la tabla destino (los
+     * alias se resuelven al nombre canonico de la columna, sin distinguir
+     * mayusculas). El limite de filas solo se aplica si el filtro lo tiene
      * activado ({@link TableFilter#isLimitEnabled()}).
      *
      * @param filter filtro elegido por el usuario; null equivale a uno vacio
@@ -174,9 +180,17 @@ public final class TableDataExtractor {
         Set<String> warned = new LinkedHashSet<String>();
         boolean limited = filter.isLimitEnabled();
         int limit = filter.getMaxRows() > 0 ? filter.getMaxRows() : DEFAULT_MAX_ROWS;
-        String where = filter.whereClause();
-        String sql = "SELECT * FROM " + qualifiedTable
-                + (where.isEmpty() ? "" : " WHERE " + where);
+        boolean custom = filter.hasCustomQuery();
+        List<TableColumn> targetColumns =
+                custom ? columnsOf(connection, qualifiedTable) : null;
+        String sql;
+        if (custom) {
+            sql = checkedCustomSql(filter.getCustomQuery());
+        } else {
+            String where = filter.whereClause();
+            sql = "SELECT * FROM " + qualifiedTable
+                    + (where.isEmpty() ? "" : " WHERE " + where);
+        }
 
         Statement st = connection.createStatement();
         try {
@@ -189,10 +203,9 @@ public final class TableDataExtractor {
             ResultSet rs = st.executeQuery(sql);
             try {
                 ResultSetMetaData md = rs.getMetaData();
-                List<String> columns = new ArrayList<String>();
-                for (int i = 1; i <= md.getColumnCount(); i++) {
-                    columns.add(quoteIfNeeded(md.getColumnLabel(i)));
-                }
+                List<String> columns = custom
+                        ? mappedColumns(md, targetColumns, qualifiedTable)
+                        : labels(md);
                 boolean truncated = false;
                 int rows = 0;
                 while (rs.next()) {
@@ -219,6 +232,111 @@ public final class TableDataExtractor {
         } finally {
             st.close();
         }
+    }
+
+    /** Nombres de columna del ResultSet, listos para SQL. */
+    private static List<String> labels(ResultSetMetaData md) throws SQLException {
+        List<String> columns = new ArrayList<String>();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+            columns.add(quoteIfNeeded(md.getColumnLabel(i)));
+        }
+        return columns;
+    }
+
+    /**
+     * Etiquetas del ResultSet de una consulta personalizada resueltas al
+     * nombre canonico de la columna destino (sin distinguir mayusculas).
+     * Falla con un error claro si alguna etiqueta no corresponde a una
+     * columna de la tabla o si una columna aparece dos veces.
+     */
+    private static List<String> mappedColumns(ResultSetMetaData md,
+                                              List<TableColumn> target,
+                                              String qualifiedTable) throws SQLException {
+        Map<String, String> canonical = new HashMap<String, String>();
+        for (TableColumn column : target) {
+            canonical.put(column.getName().toUpperCase(), column.getName());
+        }
+        List<String> columns = new ArrayList<String>();
+        List<String> unknown = new ArrayList<String>();
+        Set<String> seen = new LinkedHashSet<String>();
+        for (int i = 1; i <= md.getColumnCount(); i++) {
+            String label = unquote(md.getColumnLabel(i));
+            String name = canonical.get(label.toUpperCase());
+            if (name == null) {
+                unknown.add(md.getColumnLabel(i));
+                continue;
+            }
+            if (!seen.add(name.toUpperCase())) {
+                throw new SQLException("La consulta devuelve la columna " + name
+                        + " mas de una vez.");
+            }
+            columns.add(quoteIfNeeded(name));
+        }
+        if (!unknown.isEmpty()) {
+            StringBuilder message = new StringBuilder("La consulta devuelve columnas"
+                    + " que no existen en " + qualifiedTable + ": ");
+            for (int i = 0; i < unknown.size(); i++) {
+                if (i > 0) {
+                    message.append(", ");
+                }
+                message.append(unknown.get(i));
+            }
+            message.append(". Usa un alias con el nombre de la columna destino"
+                    + " (expresion AS COLUMNA).");
+            throw new SQLException(message.toString());
+        }
+        return columns;
+    }
+
+    /**
+     * Normaliza la consulta del usuario: sin ';' final (el driver la rechaza)
+     * y validando que sea un SELECT (o WITH ... SELECT), admitiendo
+     * comentarios iniciales.
+     */
+    private static String checkedCustomSql(String raw) throws SQLException {
+        String sql = raw == null ? "" : raw.trim();
+        while (sql.endsWith(";")) {
+            sql = sql.substring(0, sql.length() - 1).trim();
+        }
+        if (sql.isEmpty()) {
+            throw new SQLException("La consulta personalizada esta vacia.");
+        }
+        String head = sql;
+        while (true) {
+            if (head.startsWith("--")) {
+                int eol = head.indexOf('\n');
+                head = eol < 0 ? "" : head.substring(eol + 1).trim();
+            } else if (head.startsWith("/*")) {
+                int end = head.indexOf("*/");
+                head = end < 0 ? "" : head.substring(end + 2).trim();
+            } else {
+                break;
+            }
+        }
+        if (!startsWithWord(head, "SELECT") && !startsWithWord(head, "WITH")) {
+            throw new SQLException("La consulta personalizada debe ser un SELECT"
+                    + " (o WITH ... SELECT).");
+        }
+        return sql;
+    }
+
+    private static boolean startsWithWord(String sql, String word) {
+        return sql.length() >= word.length()
+                && sql.regionMatches(true, 0, word, 0, word.length())
+                && (sql.length() == word.length()
+                        || !isWordChar(sql.charAt(word.length())));
+    }
+
+    private static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#';
+    }
+
+    private static String unquote(String identifier) {
+        String value = identifier == null ? "" : identifier.trim();
+        if (value.length() > 1 && value.startsWith("\"") && value.endsWith("\"")) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
     }
 
     /**

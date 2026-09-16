@@ -11,6 +11,12 @@ import com.generator.mergedml.TableDataExtractor.TableColumn;
  * condiciones (combinadas con AND), una condicion libre opcional y el limite
  * de filas, que puede estar desactivado para leer la tabla completa.
  *
+ * Alternativamente puede llevar una consulta SELECT personalizada
+ * ({@link #setCustomQuery(String)} + {@link #setUseCustomQuery(boolean)}):
+ * en ese caso el extractor ejecuta ese SQL en lugar del {@code SELECT *}
+ * construido con los filtros, y las columnas del resultado se validan contra
+ * la tabla destino.
+ *
  * Es Java puro (sin APIs del IDE) para poder probarlo fuera de SQL Developer.
  */
 public final class TableFilter {
@@ -24,6 +30,8 @@ public final class TableFilter {
     private String extraCondition = "";
     private boolean limitEnabled = true;
     private int maxRows = TableDataExtractor.DEFAULT_MAX_ROWS;
+    private String customQuery = "";
+    private boolean useCustomQuery;
 
     /** Una condicion columna-operador-valor. */
     public static final class Condition {
@@ -143,6 +151,32 @@ public final class TableFilter {
 
     public void setMaxRows(int maxRows) {
         this.maxRows = maxRows;
+    }
+
+    /**
+     * Consulta SELECT libre escrita por el usuario. Solo se usa si
+     * {@link #isUseCustomQuery()} es true; en otro caso se ignora aunque
+     * tenga texto (el dialogo conserva lo escrito al cambiar de modo).
+     */
+    public String getCustomQuery() {
+        return customQuery;
+    }
+
+    public void setCustomQuery(String customQuery) {
+        this.customQuery = customQuery == null ? "" : customQuery;
+    }
+
+    public boolean isUseCustomQuery() {
+        return useCustomQuery;
+    }
+
+    public void setUseCustomQuery(boolean useCustomQuery) {
+        this.useCustomQuery = useCustomQuery;
+    }
+
+    /** True si la extraccion debe ejecutar la consulta del usuario. */
+    public boolean hasCustomQuery() {
+        return useCustomQuery && !customQuery.trim().isEmpty();
     }
 
     /**
