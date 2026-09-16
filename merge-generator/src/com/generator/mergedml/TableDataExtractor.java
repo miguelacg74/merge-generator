@@ -44,17 +44,83 @@ public final class TableDataExtractor {
     private TableDataExtractor() {
     }
 
+    /** Columna de la tabla leida de la metadata del ResultSet. */
+    public static final class TableColumn {
+
+        private final String name;
+        private final int sqlType;
+        private final String typeName;
+
+        public TableColumn(String name, int sqlType, String typeName) {
+            this.name = name;
+            this.sqlType = sqlType;
+            this.typeName = typeName;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        /** Nombre listo para SQL: entrecomillado si hace falta. */
+        public String quotedName() {
+            return quoteIfNeeded(name);
+        }
+
+        public int getSqlType() {
+            return sqlType;
+        }
+
+        public String getTypeName() {
+            return typeName;
+        }
+
+        @Override
+        public String toString() {
+            return name + " (" + typeName + ')';
+        }
+    }
+
+    /**
+     * Devuelve las columnas de la tabla (nombre y tipo) consultando la
+     * metadata de un {@code SELECT * ... WHERE 1 = 0}: no necesita permisos
+     * sobre el diccionario de datos y es instantaneo.
+     */
+    public static List<TableColumn> columnsOf(Connection connection,
+                                              String qualifiedTable) throws SQLException {
+        Statement st = connection.createStatement();
+        try {
+            ResultSet rs = st.executeQuery(
+                    "SELECT * FROM " + qualifiedTable + " WHERE 1 = 0");
+            try {
+                ResultSetMetaData md = rs.getMetaData();
+                List<TableColumn> columns = new ArrayList<TableColumn>();
+                for (int i = 1; i <= md.getColumnCount(); i++) {
+                    columns.add(new TableColumn(md.getColumnLabel(i),
+                            md.getColumnType(i), md.getColumnTypeName(i)));
+                }
+                return columns;
+            } finally {
+                rs.close();
+            }
+        } finally {
+            st.close();
+        }
+    }
+
     /** Resultado de la extraccion: sentencias, avisos y flag de truncado. */
     public static final class Result {
 
         private final List<DmlStatement> statements;
         private final List<String> warnings;
         private final boolean truncated;
+        private final String sql;
 
-        private Result(List<DmlStatement> statements, List<String> warnings, boolean truncated) {
+        private Result(List<DmlStatement> statements, List<String> warnings,
+                       boolean truncated, String sql) {
             this.statements = statements;
             this.warnings = warnings;
             this.truncated = truncated;
+            this.sql = sql;
         }
 
         public List<DmlStatement> getStatements() {
@@ -68,10 +134,16 @@ public final class TableDataExtractor {
         public boolean isTruncated() {
             return truncated;
         }
+
+        /** Consulta SELECT ejecutada contra la base de datos. */
+        public String getSql() {
+            return sql;
+        }
     }
 
     /**
-     * Ejecuta {@code SELECT * FROM tabla} y devuelve un INSERT por fila.
+     * Ejecuta {@code SELECT * FROM tabla} con limite de filas y devuelve un
+     * INSERT por fila. Equivale a un {@link TableFilter} sin condiciones.
      *
      * @param qualifiedTable nombre cualificado ({@code ESQUEMA.TABLA}); usa
      *        {@link #quoteIfNeeded(String)} para identificadores especiales
@@ -79,16 +151,42 @@ public final class TableDataExtractor {
      */
     public static Result extractAsInserts(Connection connection, String qualifiedTable,
                                           int maxRows) throws SQLException {
+        TableFilter filter = new TableFilter();
+        filter.setMaxRows(maxRows);
+        return extractAsInserts(connection, qualifiedTable, filter);
+    }
+
+    /**
+     * Ejecuta {@code SELECT * FROM tabla [WHERE filtro]} y devuelve un INSERT
+     * por fila. El limite de filas solo se aplica si el filtro lo tiene
+     * activado ({@link TableFilter#isLimitEnabled()}).
+     *
+     * @param filter filtro elegido por el usuario; null equivale a uno vacio
+     *        con el limite por defecto activado
+     */
+    public static Result extractAsInserts(Connection connection, String qualifiedTable,
+                                          TableFilter filter) throws SQLException {
+        if (filter == null) {
+            filter = new TableFilter();
+        }
         List<DmlStatement> statements = new ArrayList<DmlStatement>();
         List<String> warnings = new ArrayList<String>();
         Set<String> warned = new LinkedHashSet<String>();
-        int limit = maxRows > 0 ? maxRows : DEFAULT_MAX_ROWS;
+        boolean limited = filter.isLimitEnabled();
+        int limit = filter.getMaxRows() > 0 ? filter.getMaxRows() : DEFAULT_MAX_ROWS;
+        String where = filter.whereClause();
+        String sql = "SELECT * FROM " + qualifiedTable
+                + (where.isEmpty() ? "" : " WHERE " + where);
 
         Statement st = connection.createStatement();
         try {
-            st.setMaxRows(limit + 1); // una fila extra solo para detectar el truncado
-            st.setFetchSize(Math.min(FETCH_SIZE, limit + 1));
-            ResultSet rs = st.executeQuery("SELECT * FROM " + qualifiedTable);
+            if (limited) {
+                st.setMaxRows(limit + 1); // una fila extra solo para detectar el truncado
+                st.setFetchSize(Math.min(FETCH_SIZE, limit + 1));
+            } else {
+                st.setFetchSize(FETCH_SIZE);
+            }
+            ResultSet rs = st.executeQuery(sql);
             try {
                 ResultSetMetaData md = rs.getMetaData();
                 List<String> columns = new ArrayList<String>();
@@ -99,7 +197,7 @@ public final class TableDataExtractor {
                 int rows = 0;
                 while (rs.next()) {
                     rows++;
-                    if (rows > limit) {
+                    if (limited && rows > limit) {
                         truncated = true;
                         break;
                     }
@@ -112,9 +210,9 @@ public final class TableDataExtractor {
                 }
                 if (truncated) {
                     warnings.add("Se extrajo el maximo de " + limit + " filas de "
-                            + qualifiedTable + "; la tabla contiene mas datos.");
+                            + qualifiedTable + "; hay mas datos con ese filtro.");
                 }
-                return new Result(statements, warnings, truncated);
+                return new Result(statements, warnings, truncated, sql);
             } finally {
                 rs.close();
             }

@@ -1,3 +1,4 @@
 # Artefactos de compilacion (se regeneran con build.bat / build.sh)
 /merge-generator/build/
 /merge-generator/dist/
+/merge-generator/out/

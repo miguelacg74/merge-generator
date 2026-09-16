@@ -49,24 +49,7 @@ public class TableMergeGenController implements Controller {
                 : TableDataExtractor.quoteIfNeeded(schema) + "."
                         + TableDataExtractor.quoteIfNeeded(name);
 
-        Object input = JOptionPane.showInputDialog(Ide.getMainWindow(),
-                "Filas maximas a leer de " + qualified + ":",
-                TITLE, JOptionPane.QUESTION_MESSAGE, null, null,
-                TableDataExtractor.DEFAULT_MAX_ROWS);
-        if (input == null) {
-            return true;
-        }
-        final int maxRows;
-        try {
-            maxRows = Math.max(1, Integer.parseInt(input.toString().trim()));
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(Ide.getMainWindow(),
-                    "Numero de filas no valido: " + input,
-                    TITLE, JOptionPane.WARNING_MESSAGE);
-            return true;
-        }
-
-        extractAndOpen(table, qualified, maxRows);
+        loadColumnsAndAsk(table, qualified);
         return true;
     }
 
@@ -78,19 +61,62 @@ public class TableMergeGenController implements Controller {
 
     // ------------------------------------------------------------- extraccion
 
+    /**
+     * Fase 1: abre la conexion y lee las columnas de la tabla en segundo
+     * plano; al terminar muestra el dialogo de filtros. Si el usuario lo
+     * acepta, arranca la extraccion (fase 2).
+     */
+    private void loadColumnsAndAsk(final DBObject table, final String qualified) {
+        final JDialog progress = progressDialog(
+                "Leyendo columnas de " + qualified + "...");
+
+        SwingWorker<List<TableDataExtractor.TableColumn>, Void> worker =
+                new SwingWorker<List<TableDataExtractor.TableColumn>, Void>() {
+            private List<TableDataExtractor.TableColumn> columns;
+            private Exception error;
+
+            @Override
+            protected List<TableDataExtractor.TableColumn> doInBackground() {
+                try {
+                    Connection connection = connectionOf(table);
+                    if (connection == null) {
+                        throw new IllegalStateException(
+                                "La conexion '" + table.getConnectionName()
+                                        + "' no esta abierta.");
+                    }
+                    columns = TableDataExtractor.columnsOf(connection, qualified);
+                } catch (Exception e) {
+                    error = e;
+                }
+                return columns;
+            }
+
+            @Override
+            protected void done() {
+                progress.dispose();
+                if (error != null) {
+                    showError(error, "SELECT * FROM " + qualified + " WHERE 1 = 0");
+                    return;
+                }
+                TableFilter filter = TableFilterDialog.ask(Ide.getMainWindow(),
+                        qualified, columns, table.getConnectionName());
+                if (filter != null) {
+                    extractAndOpen(table, qualified, filter);
+                }
+            }
+        };
+        worker.execute();
+        progress.setVisible(true);
+    }
+
+    /**
+     * Fase 2: vuelve a resolver la conexion (la de la fase 1 puede haberse
+     * cerrado mientras el dialogo de filtros estuvo abierto), lee las filas
+     * con el filtro elegido y abre el MergeDialog.
+     */
     private void extractAndOpen(final DBObject table, final String qualified,
-                                final int maxRows) {
-        final JDialog progress = new JDialog(Ide.getMainWindow(), TITLE, true);
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
-        panel.add(new JLabel("Leyendo datos de " + qualified + "..."), BorderLayout.NORTH);
-        JProgressBar bar = new JProgressBar();
-        bar.setIndeterminate(true);
-        panel.add(bar, BorderLayout.CENTER);
-        progress.setContentPane(panel);
-        progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-        progress.pack();
-        progress.setLocationRelativeTo(Ide.getMainWindow());
+                                final TableFilter filter) {
+        final JDialog progress = progressDialog("Leyendo datos de " + qualified + "...");
 
         SwingWorker<TableDataExtractor.Result, Void> worker =
                 new SwingWorker<TableDataExtractor.Result, Void>() {
@@ -108,7 +134,7 @@ public class TableMergeGenController implements Controller {
                                         + "' no esta abierta.");
                     }
                     result = TableDataExtractor.extractAsInserts(connection, qualified,
-                            maxRows);
+                            filter);
                 } catch (Exception e) {
                     error = e;
                 }
@@ -118,13 +144,16 @@ public class TableMergeGenController implements Controller {
             @Override
             protected void done() {
                 progress.dispose();
+                String where = filter.whereClause();
+                String sql = "SELECT * FROM " + qualified
+                        + (where.isEmpty() ? "" : " WHERE " + where);
                 if (error != null) {
-                    showError(error);
+                    showError(error, sql);
                     return;
                 }
                 if (result == null || result.getStatements().isEmpty()) {
                     JOptionPane.showMessageDialog(Ide.getMainWindow(),
-                            "La tabla " + qualified + " no tiene filas.",
+                            "La tabla " + qualified + " no devolvio filas con ese filtro.",
                             TITLE, JOptionPane.INFORMATION_MESSAGE);
                     return;
                 }
@@ -137,9 +166,25 @@ public class TableMergeGenController implements Controller {
         progress.setVisible(true);
     }
 
-    private static void showError(Exception e) {
+    private static JDialog progressDialog(String message) {
+        JDialog progress = new JDialog(Ide.getMainWindow(), TITLE, true);
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
+        panel.add(new JLabel(message), BorderLayout.NORTH);
+        JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        panel.add(bar, BorderLayout.CENTER);
+        progress.setContentPane(panel);
+        progress.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        progress.pack();
+        progress.setLocationRelativeTo(Ide.getMainWindow());
+        return progress;
+    }
+
+    private static void showError(Exception e, String sql) {
         JOptionPane.showMessageDialog(Ide.getMainWindow(),
-                "No se pudieron leer los datos de la tabla:\n" + e.getMessage(),
+                "No se pudieron leer los datos de la tabla:\n" + e.getMessage()
+                        + (sql == null ? "" : "\n\nConsulta ejecutada:\n" + sql),
                 TITLE, JOptionPane.ERROR_MESSAGE);
     }
 
@@ -163,7 +208,7 @@ public class TableMergeGenController implements Controller {
     private static Connection connectionOf(DBObject table) {
         try {
             Connection connection = table.getConnection();
-            if (connection != null) {
+            if (connection != null && !connection.isClosed()) {
                 return connection;
             }
         } catch (Throwable ignored) {

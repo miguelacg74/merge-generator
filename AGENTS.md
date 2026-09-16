@@ -13,8 +13,23 @@ Codigo y documentacion en espanol, sin tildes en fuentes/comentarios (ASCII).
 - Prueba sin IDE: `javac -d out -cp build test\SelfTest.java` y
   `java -cp "out;build" SelfTest`. Ojo: `java.exe` es binario Windows; usa rutas
   Windows y `;` como separador (las rutas `/tmp` de Git Bash no resuelven).
-- `build/` y `dist/` NO se versionan (estan en `.gitignore`); se regeneran con
-  cada `build.bat`. No re-añadirlos con `git add -f` ni committeandolos a mano.
+- `SelfTest` incluye una conexion JDBC falsa (`java.lang.reflect.Proxy`) que
+  simula una tabla con filas: ejercita `extractAsInserts` y `columnsOf` SIN
+  base de datos. Al cambiar la extraccion, actualizar esa simulacion y mantener
+  verde el chequeo de que se generan statements por fila.
+
+## Regresiones conocidas (lecciones)
+
+- Sep-2026: en el refactor de `extractAsInserts` para soportar `TableFilter`
+  se perdio la linea `statements.add(new DmlStatement(...))` dentro del
+  `while (rs.next())`: el loop leia las filas pero el resultado salia siempre
+  vacio ("no devolvio filas") sin lanzar error. Sintoma confuso: el SQL mostrado
+  era correcto, asi que parecia problema de sesion/datos. Regla: al tocar el
+  loop de extraccion, verificar que cada fila leida termine en un `DmlStatement`
+  y correr `SelfTest` (la conexion falsa lo cubre).
+- `build/`, `dist/` y `out/` NO se versionan (estan en `.gitignore`); los dos
+  primeros se regeneran con cada `build.bat` y `out/` con cada corrida de
+  `SelfTest`. No re-añadirlos con `git add -f` ni committeandolos a mano.
 
 ## Arquitectura (respetar el pipeline)
 
@@ -24,6 +39,8 @@ Flujo unico: **parser/extractor -> `DmlStatement` -> `MergeGenerator`(+`MergeCon
 Hay DOS puntos de entrada que convergen en el mismo pipeline:
 - `MergeGenController`: texto del worksheet -> `DmlParser` -> INSERTs/UPDATEs.
 - `TableMergeGenController`: tabla del navegador -> `TableDataExtractor` -> INSERTs.
+  Antes de extraer abre `TableFilterDialog` (columnas via `columnsOf`), que arma
+  un `TableFilter` (WHERE + limite opcional) para el `SELECT` del extractor.
 
 Regla de oro: cualquier fuente nueva de datos debe producir `DmlStatement` y entrar
 por `MergeDialog`. No generar MERGE por caminos paralelos ni duplicar logica del
@@ -77,8 +94,9 @@ del IDE.
   `''` para escapar comillas; `TO_DATE`/`TO_TIMESTAMP`/`HEXTORAW`/`N'...'` segun
   tipo; BLOB y tipos sin literal -> `NULL` + aviso (mejor perder el dato con
   aviso que generar SQL invalido).
-- La extraccion de tablas SIEMPRE con limite de filas (`setMaxRows`+1 para
-  detectar truncado y avisar).
+- La extraccion de tablas aplica limite de filas (`setMaxRows`+1 para detectar
+  truncado y avisar) solo cuando el usuario lo deja activado en el dialogo de
+  filtros (opcional, ON por defecto con `DEFAULT_MAX_ROWS`).
 - Limitaciones conocidas y asumidas: `INSERT ... SELECT`, `VALUES` multi-fila,
   `INSERT` sin lista de columnas y quoting `q'[...]'` no soportados; WHERE de
   UPDATE solo igualdades con `AND`; PK manual en el dialogo se mayusculea
