@@ -60,11 +60,17 @@ public class MergeDialog extends JDialog {
                 ? new ArrayList<String>()
                 : new ArrayList<String>(initialWarnings);
 
+        boolean connected = connectionAvailable(connection);
         List<TableKey> keys = new ArrayList<TableKey>();
         for (String table : MergeGenerator.tablesOf(statements)) {
             List<String> pk = PrimaryKeyResolver.primaryKeyOf(connection, table);
-            keys.add(new TableKey(table, String.join(", ", pk),
-                    pk.isEmpty() ? "no encontrada" : "base de datos"));
+            String origin;
+            if (!pk.isEmpty()) {
+                origin = "base de datos";
+            } else {
+                origin = connected ? "no encontrada" : "sin conexion";
+            }
+            keys.add(new TableKey(table, String.join(", ", pk), origin));
         }
         this.keyModel = new KeyTableModel(keys);
 
@@ -174,6 +180,15 @@ public class MergeDialog extends JDialog {
         text.append(script);
         output.setText(text.toString());
         output.setCaretPosition(0);
+    }
+
+    /** True si hay conexion usable para consultar la clave primaria. */
+    private static boolean connectionAvailable(Connection connection) {
+        try {
+            return connection != null && !connection.isClosed();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static List<String> splitColumns(String text) {
