@@ -55,6 +55,9 @@ public class TableFilterDialog extends JDialog {
     /** Ultima carpeta usada para presets (dura lo que dure la sesion del IDE). */
     private static File lastPresetDir;
 
+    /** Archivo preset asociado al dialogo (ultimo cargado o guardado). */
+    private File currentPresetFile;
+
     private final TableFilter filter = new TableFilter();
     private final ConditionsModel model = new ConditionsModel(filter);
     private final String qualifiedTable;
@@ -74,6 +77,7 @@ public class TableFilterDialog extends JDialog {
     private final JTextArea queryArea = new JTextArea(8, 60);
     private final JPanel cards = new JPanel(new CardLayout());
     private final JTextArea preview = new JTextArea(2, 40);
+    private final JLabel presetName = new JLabel("(sin archivo)");
     private boolean accepted;
 
     /**
@@ -149,10 +153,14 @@ public class TableFilterDialog extends JDialog {
         JPanel presetRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         presetRow.setAlignmentX(LEFT_ALIGNMENT);
         JButton loadPreset = new JButton("Cargar preset...");
-        JButton savePreset = new JButton("Guardar preset...");
+        JButton savePreset = new JButton("Guardar preset");
+        JButton savePresetAs = new JButton("Guardar como...");
+        presetName.setFont(presetName.getFont().deriveFont(Font.ITALIC, 11f));
         presetRow.add(new JLabel("Preset:"));
         presetRow.add(loadPreset);
         presetRow.add(savePreset);
+        presetRow.add(savePresetAs);
+        presetRow.add(presetName);
         bottom.add(presetRow);
         bottom.add(Box.createVerticalStrut(4));
 
@@ -224,6 +232,11 @@ public class TableFilterDialog extends JDialog {
         savePreset.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 savePreset();
+            }
+        });
+        savePresetAs.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                savePresetAs();
             }
         });
         ok.addActionListener(new ActionListener() {
@@ -393,9 +406,21 @@ public class TableFilterDialog extends JDialog {
 
     // ---------------------------------------------------------------- preset
 
+    /** Guarda en el archivo asociado (cargado o guardado antes); si no hay, pide ruta. */
     private void savePreset() {
+        if (currentPresetFile == null) {
+            savePresetAs();
+            return;
+        }
+        writePreset(currentPresetFile);
+    }
+
+    /** Pide ruta y nombre; propone el archivo asociado o el nombre sugerido. */
+    private void savePresetAs() {
         JFileChooser chooser = presetChooser();
-        chooser.setSelectedFile(new File(presetDir(), suggestedName()));
+        chooser.setSelectedFile(currentPresetFile != null
+                ? currentPresetFile
+                : new File(presetDir(), suggestedName()));
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -407,10 +432,16 @@ public class TableFilterDialog extends JDialog {
                         != JOptionPane.YES_OPTION) {
             return;
         }
+        writePreset(file);
+    }
+
+    private void writePreset(File file) {
         syncFilter();
         try {
             FilterPreset.of(qualifiedTable, filter).save(file);
+            currentPresetFile = file;
             lastPresetDir = file.getParentFile();
+            updatePresetName();
             JOptionPane.showMessageDialog(this,
                     "Preset guardado en:\n" + file.getAbsolutePath(),
                     "Guardar preset", JOptionPane.INFORMATION_MESSAGE);
@@ -451,6 +482,8 @@ public class TableFilterDialog extends JDialog {
 
         List<String> warnings = new ArrayList<String>();
         applyFilter(preset.toFilter(columns, warnings));
+        currentPresetFile = file;
+        updatePresetName();
         if (!warnings.isEmpty()) {
             StringBuilder message = new StringBuilder(
                     "El preset se cargo con avisos:\n");
@@ -477,6 +510,14 @@ public class TableFilterDialog extends JDialog {
         customBox.setSelected(loaded.isUseCustomQuery());
         showCard();
         updatePreview();
+    }
+
+    /** Muestra el nombre del preset asociado junto a los botones. */
+    private void updatePresetName() {
+        presetName.setText(currentPresetFile == null
+                ? "(sin archivo)" : currentPresetFile.getName());
+        presetName.setToolTipText(currentPresetFile == null ? null
+                : currentPresetFile.getAbsolutePath());
     }
 
     private JFileChooser presetChooser() {
